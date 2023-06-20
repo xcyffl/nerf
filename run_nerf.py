@@ -21,7 +21,7 @@ def batchify(fn, chunk):
     """Constructs a version of 'fn' that applies to smaller batches."""
     if chunk is None:
         return fn
-
+    #break input into chunk(batch_size) and then apply function on each chunk
     def ret(inputs):
         return tf.concat([fn(inputs[i:i+chunk]) for i in range(0, inputs.shape[0], chunk)], 0)
     return ret
@@ -66,7 +66,7 @@ def render_rays(ray_batch,
       network_fn: function. Model for predicting RGB and density at each point
         in space.
       network_query_fn: function used for passing queries to network_fn.
-      N_samples: int. Number of different times to sample along each ray.
+      N_samples: int. Number of different times to sample along each ray. To approximate the integral
       retraw: bool. If True, include model's raw, unprocessed predictions.
       lindisp: bool. If True, sample linearly in inverse depth rather than in depth.
       perturb: float, 0 or 1. If non-zero, each ray is sampled at stratified
