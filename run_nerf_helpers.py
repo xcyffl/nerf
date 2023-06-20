@@ -7,13 +7,13 @@ import json
 
 
 # Misc utils
-
+#computes mean squared value
 def img2mse(x, y): return tf.reduce_mean(tf.square(x - y))
 
 
 def mse2psnr(x): return -10.*tf.log(x)/tf.log(10.)
 
-
+#convert to image values
 def to8b(x): return (255*np.clip(x, 0, 1)).astype(np.uint8)
 
 
@@ -31,24 +31,25 @@ class Embedder:
         embed_fns = []
         d = self.kwargs['input_dims']
         out_dim = 0
+        #including the original input as the first argument
         if self.kwargs['include_input']:
             embed_fns.append(lambda x: x)
             out_dim += d
 
         max_freq = self.kwargs['max_freq_log2']
         N_freqs = self.kwargs['num_freqs']
-
+        #what is the difference between log_sampling and linear sampling
         if self.kwargs['log_sampling']:
             freq_bands = 2.**tf.linspace(0., max_freq, N_freqs)
         else:
             freq_bands = tf.linspace(2.**0., 2.**max_freq, N_freqs)
-
+        #input is encoded by each freq and sin cos functions are interleaved.
         for freq in freq_bands:
             for p_fn in self.kwargs['periodic_fns']:
                 embed_fns.append(lambda x, p_fn=p_fn,
                                  freq=freq: p_fn(x * freq))
                 out_dim += d
-
+        #creates a list of lambda functions.
         self.embed_fns = embed_fns
         self.out_dim = out_dim
 
@@ -60,7 +61,7 @@ def get_embedder(multires, i=0):
 
     if i == -1:
         return tf.identity, 3
-
+    #converting coordinates to higher order frequencies.
     embed_kwargs = {
         'include_input': True,
         'input_dims': 3,
@@ -71,6 +72,7 @@ def get_embedder(multires, i=0):
     }
 
     embedder_obj = Embedder(**embed_kwargs)
+    #return the embed function instead of return the result directly
     def embed(x, eo=embedder_obj): return eo.embed(x)
     return embed, embedder_obj.out_dim
 
@@ -86,14 +88,17 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, skips
         input_ch), type(input_ch_views), use_viewdirs)
     input_ch = int(input_ch)
     input_ch_views = int(input_ch_views)
-
+    #input shape is  xyz and view parameters
     inputs = tf.keras.Input(shape=(input_ch + input_ch_views))
+    #breaks the input to two parts
     inputs_pts, inputs_views = tf.split(inputs, [input_ch, input_ch_views], -1)
+    #moving the dim to the last channel
     inputs_pts.set_shape([None, input_ch])
     inputs_views.set_shape([None, input_ch_views])
 
     print(inputs.shape, inputs_pts.shape, inputs_views.shape)
     outputs = inputs_pts
+    #D layers of MLP and skip connection is used in certain layers
     for i in range(D):
         outputs = dense(W)(outputs)
         if i in skips:
