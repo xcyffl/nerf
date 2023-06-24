@@ -37,10 +37,11 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
     if viewdirs is not None:
         input_dirs = tf.broadcast_to(viewdirs[:, None], inputs.shape)
         input_dirs_flat = tf.reshape(input_dirs, [-1, input_dirs.shape[-1]])
-        #direction is also embedded
+        #direction is also embedded with the same embedding function as points
         embedded_dirs = embeddirs_fn(input_dirs_flat)
         embedded = tf.concat([embedded, embedded_dirs], -1)
-
+    #batchify returns function that embedded is passed to 
+    #apply function on each of the chunks
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = tf.reshape(outputs_flat, list(
         inputs.shape[:-1]) + [outputs_flat.shape[-1]])
