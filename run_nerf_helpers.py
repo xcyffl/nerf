@@ -129,8 +129,11 @@ def get_rays(H, W, focal, c2w):
     """Get ray origins, directions from a pinhole camera."""
     i, j = tf.meshgrid(tf.range(W, dtype=tf.float32),
                        tf.range(H, dtype=tf.float32), indexing='xy')
+    #ray point on the image coordinate is x: i-W*.5; y: j-H*.5; focal; divide by focal to normalize the ray direction.
     dirs = tf.stack([(i-W*.5)/focal, -(j-H*.5)/focal, -tf.ones_like(i)], -1)
+    #H, W, 1, 3 * 3, 3 -> HW33 -> HW3
     rays_d = tf.reduce_sum(dirs[..., np.newaxis, :] * c2w[:3, :3], -1)
+    #broadcast the camera location to the shape of ray direction
     rays_o = tf.broadcast_to(c2w[:3, -1], tf.shape(rays_d))
     return rays_o, rays_d
 
@@ -191,26 +194,40 @@ def sample_pdf(bins, weights, N_samples, det=False):
     weights += 1e-5  # prevent nans
     pdf = weights / tf.reduce_sum(weights, -1, keepdims=True)
     cdf = tf.cumsum(pdf, -1)
+    #cumulative distribution starts with 0
     cdf = tf.concat([tf.zeros_like(cdf[..., :1]), cdf], -1)
 
     # Take uniform samples
     if det:
         u = tf.linspace(0., 1., N_samples)
+        #converting u to the shape of cdf.shape[:-1] + [N_samples], changing the size on the last dimension
         u = tf.broadcast_to(u, list(cdf.shape[:-1]) + [N_samples])
     else:
         u = tf.random.uniform(list(cdf.shape[:-1]) + [N_samples])
 
     # Invert CDF
-    inds = tf.searchsorted(cdf, u, side='right')
+    #returns the bucket index for each value
+    #side controls which index is returned if a value lands on an edge
+    #read considering the space between values 0 is one space before the first element in cdf
+    # when u value lands matches the exact value, it will take the position of the right bucket.
+    inds = tf.searchsorted(cdf, u, side='right') #search for where U would be placed in cdf
+    #get the left index for each u
     below = tf.maximum(0, inds-1)
+    #get the right index for each u
     above = tf.minimum(cdf.shape[-1]-1, inds)
     inds_g = tf.stack([below, above], -1)
+    #sample values based on those indices
+    
     cdf_g = tf.gather(cdf, inds_g, axis=-1, batch_dims=len(inds_g.shape)-2)
     bins_g = tf.gather(bins, inds_g, axis=-1, batch_dims=len(inds_g.shape)-2)
-
+    #the higher the weights the more samples will be taken since more u will fall on that weight
+    #denom is the value of the weight
     denom = (cdf_g[..., 1]-cdf_g[..., 0])
     denom = tf.where(denom < 1e-5, tf.ones_like(denom), denom)
+    #t is the ratio between each u and its lower bound on cdf
     t = (u-cdf_g[..., 0])/denom
+    #samples then draw as bin_low + ratio * (bin_high-bin_low)
+    
     samples = bins_g[..., 0] + t * (bins_g[..., 1]-bins_g[..., 0])
 
     return samples
